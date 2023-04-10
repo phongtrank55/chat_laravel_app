@@ -1,17 +1,33 @@
 <template>
 	<div>
+        <div class="users-online">
+            <button type="button" class="btn btn-primary">
+                Users online: <span class="badge badge-light">{{ usersOnline }}</span>
+            </button>
+        </div>
+        <div class="btn-logout">
+            <a class="btn btn-danger" href="/logout" onclick="event.preventDefault();document.getElementById('logout-form').submit();">
+                Logout
+            </a>
+            <form id="logout-form" action="/logout" method="POST" style="display: none;">
+            <input type="hidden" name="_token" :value="csrfToken">
+            </form>
+        </div>
+
         <div class="chat">
             <div class="chat-title">
                 <h1>Chatroom</h1>
             </div>
             <div class="messages">
                 <div class="messages-content">
-                    <ChatItem v-for="n in 30" :key="n"></ChatItem>
+                    <div class="messages-content">
+                        <ChatItem v-for="(message, index) in list_messages" :key="index" :message="message"></ChatItem>
+                    </div>
                 </div>
             </div>
             <div class="message-box">
-                <textarea type="text" class="message-input" placeholder="Type message..."></textarea>
-                <button type="submit" class="message-submit">Send</button>
+                <input type="text" v-model="message" @keyup.enter="sendMessage" class="message-input" placeholder="Type message..."/>
+                <button type="button" class="message-submit" @click="sendMessage">Send</button>
             </div>
         </div>
         <div class="bg"></div>
@@ -19,12 +35,69 @@
 </template>
 
 <script>
-    import ChatItem from './ChatItem.vue'
-    export default {
-        components: {
-            ChatItem
+import ChatItem from './ChatItem.vue'
+export default {
+    components: {
+        ChatItem
+    },
+    data() {
+        return {
+            message: '',
+            list_messages: [],
+            csrfToken: '', // thêm csrftoken để lát ta sẽ dùng nó để logout
+            usersOnline: 0
         }
+    },
+
+    created() {
+        this.loadMessage();
+        Echo.channel('chat_laravel_chatroom')
+        .listen('MessagePosted', (data) => {
+            let message = data.message
+            message.user = data.user
+            this.list_messages.push(message)
+        })
+    },
+
+    getUsersOnline() {
+        axios.get(`${window.location.protocol}//${window.location.hostname}:6001/apps/${this.$root.echoCredentials.appId}/channels/chat_laravel_chatroom?auth_key=${this.$root.echoCredentials.key}`)
+        .then(response => {
+            this.usersOnline = response.data.subscription_count
+        })
+        .catch(e => console.log(e))
+    },
+
+    methods: {
+        async loadMessage() {
+            try {
+                const response = await axios.get('/messages')
+                this.list_messages = response.data
+            } catch (error) {
+                console.log(error)
+            }
+        },
+        async sendMessage() {
+            try {
+                const response = await axios.post('/messages', {
+                    message: this.message
+                })
+                this.list_messages.push(response.data.message)
+                this.message = ''
+            } catch (error) {
+                console.log(error)
+            }
+        }
+    },
+
+    mounted() {
+        // lấy giá trị csrfToken
+        this.csrfToken = document.head.querySelector('meta[name="csrf-token"]').content
+
+        setInterval(() => {
+            // this.getUsersOnline() // lấy số users online mỗi 3 giây (tuỳ chỉnh theo ý muốn)
+        }, 3000)
     }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -156,4 +229,19 @@ Message Box
         }
     }
 }
+
+.users-online {
+    position: absolute;
+    top: 20px;
+    left: 50px;
+    z-index: 3;
+}
+.btn-logout {
+    position: absolute;
+    top: 20px;
+    right: 50px;
+    z-index: 3;
+}
+
+
 </style>
